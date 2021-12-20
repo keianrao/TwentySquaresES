@@ -61,9 +61,8 @@ function initialiseDOM() {
 		-1, -1, -1, -1, -1, -1
 	];
 	for (let o = 0; o < 20; ++o) {
-		let tile = document.createElement("img");
+		let tile = document.createElement("div");
 		tile.className = "tile";
-		tile.src = FILENAMES.tiles[type[o]];
 		tile.style.left = (x[o] * SIZES.tilew) + "px";
 		tile.style.top = (y[o] * SIZES.tileh) + "px";
 		tile["gridX"] = x[o];
@@ -71,9 +70,18 @@ function initialiseDOM() {
 		tile["rosette"] = type[o] == 1;
 		tile["wheatTrackIndex"] = wheatTrackIndex[o];
 		tile["barleyTrackIndex"] = barleyTrackIndex[o];
+		tile["owner"] = "none";
 		tile.onclick = function() { handleClick(tile); }
 		DOM.root.appendChild(tile);
 		DOM.tiles.push(tile);
+
+		tile.under = document.createElement("img");
+		tile.under.src = FILENAMES.tiles[type[o]];
+		tile.appendChild(tile.under);
+
+		tile.over = document.createElement("img");
+		tile.over.className = "piece";
+		tile.appendChild(tile.over);
 	}
 }
 
@@ -92,19 +100,62 @@ initialiseGame();
 
 function yieldTurn(nextPlayer) {
 	gameState.whoseTurn = nextPlayer;
-	gameState.lastRolls = Math.floor(Math.random() * 16);
+	gameState.lastRolls = 1 + Math.floor(Math.random() * 15);
 	gameState.lastRoll = 0;
 	for (let n = gameState.lastRolls; n != 0; n >>= 1) gameState.lastRoll += n & 1;
-	console.log(gameState);
+	console.log(gameState.whoseTurn + ", " + gameState.lastRoll);
 }
 
 function handleClick(tile) {
-	console.log({
-		gridX: tile.gridX,
-		gridY: tile.gridY,
-		rosette: tile.rosette,
-		wheatTrackIndex: tile.wheatTrackIndex,
-		barleyTrackIndex: tile.barleyTrackIndex
-	});
+	let player = gameState.whoseTurn;
+	let opponent = getOpponent(player);
+	let lastRoll = gameState.lastRoll;
+	let waiting = gameState[player + "Waiting"];
+	let trackIndex = tile[player + "TrackIndex"]
+	let rear = getTrackTile(player, trackIndex - lastRoll);
+
+	let atPlacePosition = ((trackIndex + 1) === lastRoll);
+	let atMovePosition = rear && (rear.owner === player);
+	let atFinishPosition = (trackIndex === (14 - lastRoll));
+
+	if (atFinishPosition && tile.owner == player) {
+		tile.owner = "none";
+		tile.over.removeAttribute("src");
+		++gameState[tile.owner + "Finished"];
+		yieldTurn(opponent);
+		return;
+	}
+
+	if (atPlacePosition && waiting > 0) {
+		tile.owner = player;
+		tile.over.src = FILENAMES[tile.owner];
+		--gameState[tile.owner + "Waiting"];
+		yieldTurn(tile.rosette ? player : opponent);
+		return;
+	}
+
+	if (atMovePosition) {
+		let capture = (tile.owner != "none");
+		rear.owner = "none";
+		rear.over.removeAttribute("src");
+		tile.owner = player;
+		tile.over.src = FILENAMES[tile.owner];
+		if (capture) ++gameState[opponent + "Waiting"];
+		yieldTurn(tile.rosette ? player : opponent);
+		return;
+	}
+}
+
+function getTrackTile(player, trackIndex) {
+	if (trackIndex < 0 || trackIndex > 13) return null;
+	for (let tile of DOM.tiles) {
+		if (player === "wheat" && tile.wheatTrackIndex == trackIndex) return tile;
+		if (player === "barley" && tile.barleyTrackIndex == trackIndex) return tile;
+	}
+}
+
+function getOpponent(player) {
+	if (player == "wheat") return "barley";
+	if (player == "barley") return "wheat";
 }
 
